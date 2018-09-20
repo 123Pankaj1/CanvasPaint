@@ -1,0 +1,261 @@
+<!doctype html>
+<html>
+  <head>
+  
+	<link rel="stylesheet" href="chat.css">
+	<script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.6.4/angular.min.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
+	<script src="jquery.js"></script>
+	
+		 
+	<script>
+	
+		var app = angular.module("chatApp", []);
+
+		app.controller("chatCtrl", function($scope) {
+		
+		
+		$scope.selfName;
+		
+		$scope.userList = [];
+		
+		//$scope.msgArrayMani = [ {"message":"hiiiiiiiiiiiiiiiiii","msgType":"self"},{"message":"Heloooooooooo","msgType":"other"}];
+		//$scope.msgArrayAnil = [ {"message":"hii15465","msgType":"self"},{"message":"5465iumiu","msgType":"other"}];
+		//$scope.msgArrayjay = [ {"message":"jay","msgType":"self"},{"message":"ho","msgType":"other"}];
+		
+		$scope.chatHistory = {};   //{"mani":$scope.msgArrayMani,"anil":$scope.msgArrayAnil,"jay":$scope.msgArrayjay};
+	
+		$scope.TargetUser;
+		
+			var socket;
+			var myUserName;
+		
+		//start server in port 
+		socket = io.connect("http://192.168.2.133:3000");
+		
+		//get user name for chat 
+			var userName = prompt("What's your name?");
+			setUsername(userName);
+			getChatHistory(userName);
+			$scope.selfName = userName;
+			
+			function setUsername(name) {
+				myUserName = name;
+				socket.emit('set username',myUserName, function(data) { console.log('emit set username', data); });
+			}
+			
+			function getChatHistory(name) {
+				socket.emit('getChatHistory',name,function(data) { 
+				console.log('emit getChatHistory',data);
+				$scope.chatHistory = data;
+				$scope.$apply();
+				});
+			}
+			
+			socket.on('welcome', function(msg) {
+				var allUserArray = JSON.parse(msg.currentUsers);
+				for(var i=0;i<allUserArray.length;i++){
+					var newUserObj = {"name":allUserArray[i]};
+					if(allUserArray[i] != userName){
+						$scope.userList.push(newUserObj);
+						createChatHistory(allUserArray[i]);
+					}
+				}
+				$scope.$apply();
+			 });
+			 
+			 socket.on('userJoined', function(msg) {
+				appendNewUser(msg.userName, true);
+			  });
+			  
+			socket.on('sendChatHistory', function(data) {
+				console.log(data);
+				$scope.$apply(function(){
+				$scope.chatHistory = data; 
+				});
+			  });  
+			 
+			socket.on('userLeft', function(msg) {
+			handleUserLeft(msg);
+			});
+			 
+			 function handleUserLeft(msg) {
+				console.log(JSON.stringify($scope.chatHistory));
+				$scope.userList = removeByKey($scope.userList,msg);
+				$scope.$apply();
+			}
+
+		$('#sendButton').click(function(){
+			OnSendMsg();
+		});
+		$('#saveChat').click(function(){
+			OnSaveMsg();
+		});
+		
+		
+		
+		$(document).keypress(function(e) {
+			if(e.which == 13) {
+				OnSendMsg();
+			}
+		});
+			
+////////////////////////////////////////////////////////////////////////////////////////////////////////			
+			
+		
+		function createChatHistory(userName){
+			var newArray = new Array();
+			$scope.chatHistory[userName] = newArray;
+		}
+		
+		function appendNewUser(userName){
+			var newUserObj = {"name":userName};
+			createChatHistory(userName);
+			if($scope.selfName != userName)
+			{
+			$scope.userList.push(newUserObj);
+			}
+			$scope.$apply();
+		}
+		
+		function OnSendMsg(){
+		   var msg =  $('#message-to-send').val();
+		    var trgtUser = $scope.TargetUser;
+			
+			var msgJson = {
+					  "inferSrcUser": true,
+					  "source": "",
+					  "message":msg,
+					  "target": trgtUser
+					};
+		  $scope.chatHistory[trgtUser].push(msgJson);		
+								
+		  socket.emit('message',msgJson);
+		  $('#message-to-send').val('');
+		  $scope.$apply();
+		}
+		
+		function OnSaveMsg(){
+			var data = $scope.chatHistory;
+			alert($scope.selfName);
+			socket.emit('saveChatHistory',$scope.selfName,data);
+		}
+		
+		 socket.on('message', function(msg) {
+			appendNewMessage(msg);
+		});
+		
+		function appendNewMessage(msg) {
+			$scope.chatHistory[msg.source].push(msg);
+			  $scope.$apply();
+		}
+		
+		 $scope.userChatFn = function(selectedUser){
+			$scope.TargetUser = selectedUser;
+			$scope.msgArray = $scope.chatHistory[selectedUser];
+		}
+
+		});
+		
+		
+		function removeByKey(array, params){
+			array.some(function(item, index){
+				if(array[index][params.key] === params.value){
+					// found it!
+					array.splice(index, 1);
+					return true; // stops the loop
+				}
+				return array;
+			});
+			return array;
+		 }
+	
+
+	</script>
+    <title>SAG-CHAT</title>
+   
+  </head>
+  <body> 
+
+ <div class="container clearfix" ng-app="chatApp" ng-controller="chatCtrl" >
+	
+    <div class="people-list" id="people-list">
+      <div class="search">
+        <input type="text" placeholder="search" />
+        <i class="fa fa-search"></i>
+      </div>
+      <ul class="list" id="userOnline" >
+		
+		<li class="clearfix" ng-repeat="x in userList" >
+          <img src="https://s3-us-west-2.amazonaws.com/s.cdpn.io/195612/chat_avatar_01.jpg" alt="avatar" />
+          <div class="about" ng-click="userChatFn(x.name)">
+            <div class="name">{{x.name}}</div>
+            <div class="status">
+              <i class="fa fa-circle online"></i> online
+            </div>
+          </div>
+        </li>
+
+      </ul>
+    </div>
+    
+    <div class="chat">
+      <div class="chat-header clearfix">
+        <img src="https://s3-us-west-2.amazonaws.com/s.cdpn.io/195612/chat_avatar_01_green.jpg" alt="avatar" />
+        
+        <div class="chat-about">
+          <div class="chat-with">{{TargetUser}}</div>
+          <div class="chat-num-messages"> </div>
+        </div>
+        <i class="fa fa-star"></i>
+      </div> <!-- end chat-header -->
+      
+	  
+	  
+      <div class="chat-history">
+        <ul id="messages">
+          
+		   <li  ng-repeat = "x in msgArray">
+			<div ng-if="x.source == ''"> <!-- div to self -->
+				<div class="message-data align-right">
+				  <span class="message-data-time" >10:10 AM, Today</span> &nbsp; &nbsp;
+				  <span class="message-data-name" >{{selfName}}</span> <i class="fa fa-circle me"></i>
+				</div>
+				<div class="message other-message float-right">
+				  {{x.message}}
+				</div>
+			</div>
+			
+			<div ng-if="x.source != ''"> <!-- div to other -->
+				 <div class="message-data">
+				  <span class="message-data-name"><i class="fa fa-circle online"></i>{{x.source}}</span>
+				  <span class="message-data-time">10:12 AM, Today</span>
+				</div>
+				<div class="message my-message">
+				 {{x.message}}
+				</div>
+			</div>
+			
+          </li>
+         
+        </ul>
+      </div> <!-- end chat-history -->
+      
+	  
+      <div class="chat-message clearfix">
+        <textarea name="message-to-send" id="message-to-send" placeholder ="Type your message" rows="3"></textarea>
+                
+        <i class="fa fa-file-o"></i> &nbsp;&nbsp;&nbsp;
+        <i class="fa fa-file-image-o"></i>
+        
+        <button id="sendButton">Send</button>
+		<button id="saveChat">Save Chat</button>
+
+      </div> <!-- end chat-message -->
+      
+    </div> <!-- end chat -->
+    
+  </div> <!-- end container -->
+
+</body>
+</html>
